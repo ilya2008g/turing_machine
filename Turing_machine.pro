@@ -10,13 +10,16 @@ CONFIG += c++17
 
 SOURCES += \
     main.cpp \
-    alphabet.cpp
+    alphabet.cpp \
+    turingmachine.cpp
 
 HEADERS += \
-    alphabet.h
+    alphabet.h \
+    turingmachine.h
 
 FORMS += \
-    alphabet.ui
+    alphabet.ui \
+    turingmachine.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

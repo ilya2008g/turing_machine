@@ -17,6 +17,9 @@ public:
     alphabet(QWidget *parent = nullptr);
     ~alphabet();
 
+private slots:
+    void on_nextButton_clicked();
+
 private:
     Ui::alphabet *ui;
 };

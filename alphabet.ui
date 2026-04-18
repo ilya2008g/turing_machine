@@ -21,7 +21,7 @@
     <number>75</number>
    </property>
    <item row="10" column="1">
-    <widget class="QLineEdit" name="lineEdit_2">
+    <widget class="QLineEdit" name="Add_Alphabet">
      <property name="styleSheet">
       <string notr="true">margin-left: 50px;
 margin-right: 50px;
@@ -33,7 +33,7 @@ color: black;
     </widget>
    </item>
    <item row="10" column="0">
-    <widget class="QLineEdit" name="lineEdit">
+    <widget class="QLineEdit" name="Alphabet">
      <property name="styleSheet">
       <string notr="true">margin-right:  100px;
  margin-left: 50px;
@@ -61,7 +61,7 @@ color: black;</string>
     </widget>
    </item>
    <item row="11" column="0" colspan="2">
-    <widget class="QPushButton" name="pushButton">
+    <widget class="QPushButton" name="SetAlphabet">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
        <horstretch>0</horstretch>
