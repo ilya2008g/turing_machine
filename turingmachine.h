@@ -17,12 +17,25 @@ public:
                             QWidget* parent = nullptr);
     ~TuringMachine();
 
+private slots:
+    void on_add_state_clicked();
+    void on_del_state_clicked();
+    void on_confirm_str_clicked();
+
 private:
     Ui::TuringMachine* ui;
     QString m_alphabet;
     QString m_addAlphabet;
+    int m_nextState = 0;
+    QStringList m_allSymbols;
+    QSet<QChar> m_allowed;
+    const int VISIBLE_COLS = 13;
+    int m_index;
+    QStringList m_tapeSymbols;
 
     void CreateTable();
+    void CreateTape(const QString& input);
+    void UpdateView();
 };
 
 #endif // TURINGMACHINE_H
