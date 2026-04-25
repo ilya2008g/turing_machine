@@ -2,6 +2,7 @@
 #define TURINGMACHINE_H
 
 #include <QWidget>
+#include <QScrollBar>
 
 namespace Ui {
 class TuringMachine;
@@ -30,7 +31,7 @@ private:
     QStringList m_allSymbols;
     QSet<QChar> m_allowed;
     const int VISIBLE_COLS = 13;
-    int m_index;
+    int m_index = 0;
     QStringList m_tapeSymbols;
 
     void CreateTable();

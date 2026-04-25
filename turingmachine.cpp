@@ -1,6 +1,8 @@
 #include "turingmachine.h"
 #include "ui_turingmachine.h"
 #include <QMessageBox>
+#include <QHeaderView>
+#include <QMainWindow>
 
 TuringMachine::TuringMachine(const QString& Alphabet,
                               const QString& AddAlphabet,
@@ -82,35 +84,63 @@ void TuringMachine::CreateTable() {
 }
 
 void TuringMachine::CreateTape(const QString& input) {
-    const int left_padding = VISIBLE_COLS / 2;
-    const int right_padding = left_padding;
-    const QString blank = "λ";
+    const int padding = VISIBLE_COLS / 2;
+    QString blank = "λ";
 
     m_tapeSymbols.clear();
-    for (int i = 0; i < left_padding; ++i) {
-        m_tapeSymbols.append(blank);
+    for (int i = 0; i < padding; ++i) {
+        m_tapeSymbols << blank;
     }
     for (QChar ch : input) {
-        m_tapeSymbols.append(QString(ch));
+        m_tapeSymbols << QString(ch);
     }
-    for (int i = 0; i < right_padding; ++i) {
-        m_tapeSymbols.append(blank);
+    for (int i = 0; i < padding; ++i) {
+        m_tapeSymbols << blank;
     }
 
     QTableWidget* tw = ui->tape;
+    tw->clear();
     tw->setRowCount(1);
     tw->setColumnCount(VISIBLE_COLS);
-    tw->setFixedWidth(VISIBLE_COLS * 40 + 2);
-    tw->setFixedHeight(42);
+
     tw->horizontalHeader()->setVisible(false);
-    tw->verticalHeader()->setVisible(false);
-    tw->horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-    tw->horizontalHeader()->setDefaultSectionSize(40);
-    tw->verticalHeader()->setDefaultSectionSize(40);
+    tw->verticalHeader()->setVisible(false);\
     tw->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tw->setSelectionMode(QAbstractItemView::NoSelection);
+    tw->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    tw->verticalHeader()->setDefaultSectionSize(40);
+    tw->setFixedHeight(42);
 
-    m_index = left_padding;
+    m_index = padding;
+
+    UpdateView();
+}
+
+void TuringMachine::UpdateView() {
+    const int half = VISIBLE_COLS / 2;
+    QString blank = "λ";
+    QTableWidget* tw = ui->tape;
+
+    while (m_index - half < 0) {
+        m_tapeSymbols.prepend(blank);
+        ++m_index;
+    }
+    while (m_index + half >= m_tapeSymbols.size()) {
+        m_tapeSymbols.append(blank);
+    }
+
+    for (int col = 0; col < VISIBLE_COLS; ++col) {
+        int tapePos = m_index - half + col;
+        QTableWidgetItem* item = new QTableWidgetItem(m_tapeSymbols[tapePos]);
+        item->setTextAlignment(Qt::AlignCenter);
+
+        if (col == half) {
+            item->setBackground(QBrush(QColor(0xE0, 0xF0, 0xFF)));
+        } else {
+            item->setBackground(QBrush(QColor(Qt::white)));
+        }
+        tw->setItem(0, col, item);
+    }
 }
 
 void TuringMachine::on_add_state_clicked() {
