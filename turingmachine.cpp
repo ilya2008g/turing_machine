@@ -33,6 +33,8 @@ TuringMachine::TuringMachine(const QString& Alphabet,
 
     ui->pause->setEnabled(false);
     ui->stop->setEnabled(false);
+
+    UpdateSpeedDisplay();
 }
 
 TuringMachine::~TuringMachine()
@@ -237,6 +239,26 @@ void TuringMachine::on_stop_clicked() {
     }
 }
 
+void TuringMachine::on_inc_speed_clicked() {
+    int newInterval = m_timerInterval - 100;
+    if (newInterval < 20) newInterval = 20;
+    if (newInterval != m_timerInterval) {
+        m_timerInterval = newInterval;
+        restartTimer();
+        UpdateSpeedDisplay();
+    }
+}
+
+void TuringMachine::on_dec_speed_clicked() {
+    int newInterval = m_timerInterval + 100;
+    if (newInterval > 2000) newInterval = 2000;
+    if (newInterval != m_timerInterval) {
+        m_timerInterval = newInterval;
+        restartTimer();
+        UpdateSpeedDisplay();
+    }
+}
+
 void TuringMachine::executeStep() {
     if (!m_simInit || m_tapeSymbols.isEmpty() || m_curState.isEmpty()) return;
 
@@ -397,47 +419,57 @@ TuringRules TuringMachine::parseRules(const QString &text,
     TuringRules rule;
     rule.valid = false;
 
-    QStringList parts = text.split(',', Qt::KeepEmptyParts);
-    if(parts.size() > 3) {
+    QStringList InitParts = text.split(',', Qt::KeepEmptyParts);
+    QStringList parts;
+    for (const QString& p : InitParts) {
+        QString trim = p.trimmed();
+        if (!trim.isEmpty()) {
+            parts.append(trim);
+        }
+    }
+
+    if (parts.size() > 3) {
         ok = false;
         error = "Слишком много инструкций (нужно 3)";
         return rule;
     }
 
-    while (parts.size() < 3) {
-        parts << QString();
-    }
+    QString newSymbol, direction, newState;
 
-    QString newSymbol = parts[0].trimmed();
-    QString direction = parts[1].trimmed();
-    QString newState = parts[2].trimmed();
+    for (const QString& part : parts) {
+        if (part.isEmpty()) continue;
 
-    if (!newSymbol.isEmpty()) {
-        if (!m_allSymbols.contains(newSymbol)) {
+        if (part == "L" || part == "R") {
+            if (!direction.isEmpty()) {
+                ok = false;
+                error = "Указано два направления";
+                return rule;
+            }
+            direction = part;
+        } else if (stateNames.contains(part)) {
+            if (!newState.isEmpty()) {
+                ok = false;
+                error = "Указано два состояния";
+                return rule;
+            }
+            newState = part;
+        } else if (m_allSymbols.contains(part)) {
+            if (!newSymbol.isEmpty()) {
+                ok = false;
+                error = "Указано два элемента";
+                return rule;
+            }
+            newSymbol = part;
+        } else {
             ok = false;
-            error = QString("Недопустимый символ '%1'. Разрешены: %2").arg(newSymbol, m_allSymbols.join(", "));
+            error = QString("Неизвестный компонент '%1'").arg(part);
             return rule;
         }
-        rule.newSymbol = newSymbol;
     }
 
-    if (!direction.isEmpty()) {
-        if (direction != "L" && direction != "R") {
-            ok = false;
-            error = QString("Направление должно быть L или R, а не '%1'.").arg(direction);
-            return rule;
-        }
-        rule.direction = direction;
-    }
-
-    if (!newState.isEmpty()) {
-        if (!stateNames.contains(newState)) {
-            ok = false;
-            error = QString("Состояние '%1' не существует. Доступны: %2").arg(newState, stateNames.join(", "));
-            return rule;
-        }
-        rule.newState = newState;
-    }
+    rule.newSymbol = newSymbol;
+    rule.direction = direction;
+    rule.newState = newState;
 
     if (newSymbol.isEmpty() && direction.isEmpty() && newState.isEmpty()) {
         ok = true;
@@ -448,3 +480,18 @@ TuringRules TuringMachine::parseRules(const QString &text,
     return rule;
 }
 
+void TuringMachine::restartTimer() {
+    if (m_timerActive) {
+        m_timer->stop();
+        m_timer->setInterval(m_timerInterval);
+        m_timer->start();
+    } else {
+        m_timer->setInterval(m_timerInterval);
+    }
+}
+
+void TuringMachine::UpdateSpeedDisplay() {
+    QString tooltip = QString("Интервал: %1 мс").arg(m_timerInterval);
+    ui->inc_speed->setToolTip(tooltip);
+    ui->dec_speed->setToolTip(tooltip);
+}

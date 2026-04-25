@@ -34,6 +34,8 @@ private slots:
     void on_step_clicked();
     void on_pause_clicked();
     void on_stop_clicked();
+    void on_inc_speed_clicked();
+    void on_dec_speed_clicked();
     void executeStep();
 
 private:
@@ -57,7 +59,8 @@ private:
     int m_initIndex = VISIBLE_COLS / 2;
     QTimer* m_timer = nullptr;
     bool m_timerActive = false;
-    bool m_simInit = false;;
+    bool m_simInit = false;
+    int m_timerInterval = 500;
 
     void CreateTable();
     void CreateTape(const QString& input);
@@ -68,6 +71,8 @@ private:
     void stopTimer();
     void resetSimulation();
     void updateStateDisplay();
+    void UpdateSpeedDisplay();
+    void restartTimer();
 };
 
 #endif // TURINGMACHINE_H
