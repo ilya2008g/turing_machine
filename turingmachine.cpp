@@ -3,6 +3,7 @@
 #include <QMessageBox>
 #include <QHeaderView>
 #include <QMainWindow>
+#include <QTimer>
 
 TuringMachine::TuringMachine(const QString& Alphabet,
                               const QString& AddAlphabet,
@@ -26,6 +27,12 @@ TuringMachine::TuringMachine(const QString& Alphabet,
     }
 
     CreateTable();
+
+    m_timer = new QTimer(this);
+    connect(m_timer, &QTimer::timeout, this, &TuringMachine::executeStep);
+
+    ui->pause->setEnabled(false);
+    ui->stop->setEnabled(false);
 }
 
 TuringMachine::~TuringMachine()
@@ -114,6 +121,9 @@ void TuringMachine::CreateTape(const QString& input) {
     m_index = padding;
 
     UpdateView();
+
+    m_initInput = input;
+    m_initIndex = padding;
 }
 
 void TuringMachine::UpdateView() {
@@ -176,3 +186,265 @@ void TuringMachine::on_confirm_str_clicked() {
     }
     CreateTape(input);
 }
+
+void TuringMachine::on_play_clicked() {
+    if (!m_simInit) {
+        QString error = validateAndLoadRules();
+        if (!error.isEmpty()) {
+            QMessageBox::warning(this, "Обнаружены ошибки", error);
+        }
+        if (m_tapeSymbols.isEmpty()) {
+            QMessageBox::warning(this, "Пустая строка", "Сначала введите строку");
+        }
+        StartSimulation();
+    }
+
+    if (!m_timerActive) {
+        m_timer->start(500);
+        m_timerActive = true;
+        ui->play->setEnabled(false);
+        ui->pause->setEnabled(true);
+    }
+}
+
+void TuringMachine::on_step_clicked() {
+    if (m_timerActive) {
+        stopTimer();
+    }
+    if (!m_simInit) {
+        QString error = validateAndLoadRules();
+        if (!error.isEmpty()) {
+            QMessageBox::warning(this, "Обнаружены ошибки", error);
+        }
+        if (m_tapeSymbols.isEmpty()) {
+            QMessageBox::warning(this, "Пустая строка", "Сначала введите строку");
+        }
+        StartSimulation();
+    }
+    executeStep();
+}
+
+void TuringMachine::on_pause_clicked() {
+    if (m_timerActive) {
+        stopTimer();
+    }
+}
+
+void TuringMachine::on_stop_clicked() {
+    stopTimer();
+    if (m_simInit) {
+        resetSimulation();
+    }
+}
+
+void TuringMachine::executeStep() {
+    if (!m_simInit || m_tapeSymbols.isEmpty() || m_curState.isEmpty()) return;
+
+    QString curSymbol = m_tapeSymbols[m_index];
+    QString key = m_curState + ":" + curSymbol;
+
+    if (!m_transitions.contains(key)) {
+        stopTimer();
+        QMessageBox::information(this, "Остановка", QString("Нет правила для (%1, %2). Машина остановлена.")
+                                                        .arg(m_curState, curSymbol));
+        return;
+    }
+
+    const TuringRules& rule = m_transitions[key];
+
+    if (!rule.newSymbol.isEmpty()) {
+        m_tapeSymbols[m_index] = rule.newSymbol;
+    }
+
+    if (rule.direction == "L") {
+        moveLeft();
+    } else if (rule.direction == "R") {
+        moveRight();
+    } else {
+        UpdateView();
+    }
+
+    if (!rule.newState.isEmpty()) {
+        m_curState = rule.newState;
+    }
+
+    updateStateDisplay();
+}
+
+void TuringMachine::StartSimulation() {
+    QStringList states = collectStateNames();
+    if (states.isEmpty()) return;
+    m_initState = states.first();
+    m_curState = m_initState;
+
+    m_index = m_initIndex;
+    UpdateView();
+    updateStateDisplay();
+
+    m_simInit = true;
+    ui->play->setEnabled(true);
+    ui->step->setEnabled(true);
+    ui->pause->setEnabled(false);
+    ui->stop->setEnabled(true);
+
+    m_timerActive = false;
+}
+
+void TuringMachine::stopTimer() {
+    if (m_timer ->isActive()) {
+        m_timer->stop();
+    }
+    m_timerActive = false;
+    ui->play->setEnabled(true);
+    ui->pause->setEnabled(false);
+}
+
+void TuringMachine::resetSimulation() {
+    if (!m_initInput.isEmpty()) {
+        CreateTape(m_initInput);
+    }
+    m_curState = m_initState;
+    updateStateDisplay();
+    m_simInit = false;
+
+    ui->pause->setEnabled(false);
+    ui->stop->setEnabled(false);
+}
+
+void TuringMachine::updateStateDisplay() {
+    QTableWidget* tw = ui->table;
+    QStringList stateNames = collectStateNames();
+    int curRow = stateNames.indexOf(m_curState);
+
+    for (int row = 0; row < tw->rowCount(); ++row) {
+        bool isActive = (row == curRow);
+        for (int col = 0; col < tw->columnCount(); ++col) {
+            QTableWidgetItem* item = tw->item(row, col);
+            if (item) {
+                if (isActive) {
+                    item->setBackground(QBrush(QColor(0xE0, 0xF0, 0xFF)));
+                } else {
+                    item->setBackground(QBrush(QColor(Qt::white)));
+                }
+            }
+        }
+    }
+}
+
+void TuringMachine::moveLeft() {
+    --m_index;
+    UpdateView();
+}
+
+void TuringMachine::moveRight() {
+    ++m_index;
+    UpdateView();
+}
+
+QStringList TuringMachine::collectStateNames() const {
+    QStringList names;
+    QTableWidget* tw = ui->table;
+    for (int row = 0; row < tw->rowCount(); ++row) {
+        QTableWidgetItem* item = tw->item(row, 0);
+        if (item) {
+            names << item->text().trimmed();
+        }
+    }
+    return names;
+}
+
+QString TuringMachine::validateAndLoadRules() {
+    QTableWidget* tw = ui->table;
+
+    QStringList stateNames = collectStateNames();
+    m_transitions.clear();
+    QStringList errors;
+
+    for(int row = 0; row < tw->rowCount(); ++row) {
+        QString curState = tw->item(row, 0)->text().trimmed();
+        for (int col = 1; col < tw->columnCount(); ++col) {
+            QString symbol = m_allSymbols[col - 1];
+            QTableWidgetItem* cell = tw->item(row, col);
+            QString text = cell ? cell->text().trimmed() : QString();
+
+            if (text.isEmpty()) continue;
+
+            bool ok = false;
+
+            QString error;
+            TuringRules rule = parseRules(text, stateNames, ok, error);
+            if (!ok) {
+                errors << QString("Строка %1, столбец '%2': %3").arg(row + 1).arg(symbol).arg(error);
+                continue;
+            }
+
+            QString key = curState + ":" + symbol;
+            m_transitions[key] = rule;
+        }
+    }
+
+    if (!errors.isEmpty()) {
+        return errors.join("\n");
+    }
+
+    return QString();
+}
+
+TuringRules TuringMachine::parseRules(const QString &text,
+                       const QStringList& stateNames, bool &ok, QString &error) const {
+    ok = true;
+    error.clear();
+    TuringRules rule;
+    rule.valid = false;
+
+    QStringList parts = text.split(',', Qt::KeepEmptyParts);
+    if(parts.size() > 3) {
+        ok = false;
+        error = "Слишком много инструкций (нужно 3)";
+        return rule;
+    }
+
+    while (parts.size() < 3) {
+        parts << QString();
+    }
+
+    QString newSymbol = parts[0].trimmed();
+    QString direction = parts[1].trimmed();
+    QString newState = parts[2].trimmed();
+
+    if (!newSymbol.isEmpty()) {
+        if (!m_allSymbols.contains(newSymbol)) {
+            ok = false;
+            error = QString("Недопустимый символ '%1'. Разрешены: %2").arg(newSymbol, m_allSymbols.join(", "));
+            return rule;
+        }
+        rule.newSymbol = newSymbol;
+    }
+
+    if (!direction.isEmpty()) {
+        if (direction != "L" && direction != "R") {
+            ok = false;
+            error = QString("Направление должно быть L или R, а не '%1'.").arg(direction);
+            return rule;
+        }
+        rule.direction = direction;
+    }
+
+    if (!newState.isEmpty()) {
+        if (!stateNames.contains(newState)) {
+            ok = false;
+            error = QString("Состояние '%1' не существует. Доступны: %2").arg(newState, stateNames.join(", "));
+            return rule;
+        }
+        rule.newState = newState;
+    }
+
+    if (newSymbol.isEmpty() && direction.isEmpty() && newState.isEmpty()) {
+        ok = true;
+        return rule;
+    }
+
+    rule.valid = true;
+    return rule;
+}
+
