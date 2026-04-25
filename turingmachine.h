@@ -26,6 +26,11 @@ public:
                             QWidget* parent = nullptr);
     ~TuringMachine();
 
+    void applyAlphabetUpdate(const QString& mainAlph, const QString& addAlph);
+
+signals:
+    void alph_change(const QString& mainAlph, const QString& addAlph);
+
 private slots:
     void on_add_state_clicked();
     void on_del_state_clicked();
@@ -36,6 +41,7 @@ private slots:
     void on_stop_clicked();
     void on_inc_speed_clicked();
     void on_dec_speed_clicked();
+    void on_change_alph_clicked();
     void executeStep();
 
 private:
@@ -73,6 +79,9 @@ private:
     void updateStateDisplay();
     void UpdateSpeedDisplay();
     void restartTimer();
+    void RebuildTable();
+    void addColumns(const QStringList& oldMain, const QStringList& oldAdd,
+                    const QStringList& newMain, const QStringList& newAdd);
 };
 
 #endif // TURINGMACHINE_H

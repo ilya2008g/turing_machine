@@ -495,3 +495,129 @@ void TuringMachine::UpdateSpeedDisplay() {
     ui->inc_speed->setToolTip(tooltip);
     ui->dec_speed->setToolTip(tooltip);
 }
+
+void TuringMachine::on_change_alph_clicked() {
+    emit alph_change(m_alphabet, m_addAlphabet);
+}
+
+void TuringMachine::applyAlphabetUpdate(const QString& mainAlph, const QString& addAlph) {
+    QStringList newMain, newAdd;
+    for (QChar ch : mainAlph) {
+        if (!ch.isSpace()) {
+            newMain << ch;
+        }
+    }
+    for (QChar ch : addAlph) {
+        if (!ch.isSpace()) {
+            newAdd << ch;
+        }
+    }
+
+    QStringList oldMain = m_alphabet.split("", Qt::SkipEmptyParts);
+    QStringList oldAdd = m_addAlphabet.split("", Qt::SkipEmptyParts);
+
+    bool rebuild = false;
+    for (const QString& s : oldMain) {
+        if (!newMain.contains(s)) {
+            rebuild = true;
+            break;
+        }
+    }
+    if (!rebuild) {
+        for (const QString& s : oldAdd) {
+            if (!newAdd.contains(s)) {
+                rebuild = true;
+                break;
+            }
+        }
+    }
+
+    if (rebuild) {
+        QMap<QString, QString> oldRules;
+        QTableWidget* tw = ui->table;
+        QStringList oldStates = collectStateNames();
+        for (int row = 0; row < tw->rowCount(); ++row) {
+            QString state = tw->item(row, 0)->text().trimmed();
+            for (int col = 1; col < tw->columnCount(); ++col) {
+                QString symbol = m_allSymbols[col - 1];
+                QTableWidgetItem* item = tw->item(row, col);
+                if (item && !item->text().isEmpty()) {
+                    oldRules[state + ":" + symbol] = item->text();
+                }
+            }
+        }
+
+        m_alphabet = mainAlph;
+        m_addAlphabet = addAlph;
+
+        CreateTable();
+
+        QTableWidget* newTw = ui->table;
+        newTw->removeRow(0);
+        for (const QString& stateName : oldStates) {
+            int newRow = newTw->rowCount();
+            newTw->insertRow(newRow);
+            newTw->setItem(newRow, 0, new QTableWidgetItem(stateName));
+        }
+        m_nextState = oldStates.size() - 1;
+
+        for (auto it = oldRules.begin(); it != oldRules.end(); ++it) {
+            QStringList keyParts = it.key().split(':');
+            if (keyParts.size() != 2) continue;
+            QString state = keyParts[0];
+            QString symbol = keyParts[1];
+            int row = oldStates.indexOf(state);
+            int col = m_allSymbols.indexOf(symbol);
+            if (row >= 0 && col >= 0) {
+                newTw->setItem(row, col + 1, new QTableWidgetItem(it.value()));
+            }
+        }
+    } else {
+        addColumns(oldMain, oldAdd, newMain, newAdd);
+
+        m_alphabet = mainAlph;
+        m_addAlphabet = addAlph;
+
+        m_allSymbols.clear();
+        m_allSymbols << newMain;
+        m_allSymbols << "λ";
+        m_allSymbols << newAdd;
+
+        QStringList headers;
+        headers << "Состояние";
+        headers.append(m_allSymbols);
+        ui->table->setHorizontalHeaderLabels(headers);
+    }
+
+    ui->tape->clear();
+    m_tapeSymbols.clear();
+    if (m_timerActive) stopTimer();
+    m_simInit = false;
+}
+
+void TuringMachine::addColumns(const QStringList& oldMain, const QStringList& oldAdd,
+                               const QStringList& newMain, const QStringList& newAdd) {
+    QTableWidget* tw = ui->table;
+    int blank_index = oldMain.size() + 1;
+
+    for (const QString& sym : newMain) {
+        if (!oldMain.contains(sym)) {
+            tw->insertColumn(blank_index);
+            for (int row = 0; row < tw->rowCount(); ++row) {
+                tw->setItem(row, blank_index, new QTableWidgetItem(""));
+            }
+            ++blank_index;
+        }
+    }
+
+    int add_index = blank_index + oldAdd.size();
+    for (const QString& sym : newAdd) {
+        if (!oldAdd.contains(sym)) {
+            tw->insertColumn(add_index);
+            for (int row = 0; row < tw->rowCount(); ++row) {
+                tw->setItem(row, add_index, new QTableWidgetItem(""));
+            }
+            ++add_index;
+        }
+    }
+}
