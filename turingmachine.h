@@ -14,6 +14,7 @@ public:
     QString direction;
     QString newState;
     bool valid = false;
+    bool halt = false;
 };
 
 class TuringMachine : public QWidget
@@ -53,6 +54,7 @@ private:
     QSet<QChar> m_allowed;
     const int VISIBLE_COLS = 13;
     int m_index = 0;
+    int m_viewOffset = 0;
     QStringList m_tapeSymbols;
     QStringList collectStateNames() const;
     QString validateAndLoadRules();
@@ -71,6 +73,7 @@ private:
     void CreateTable();
     void CreateTape(const QString& input);
     void UpdateView();
+    void UpdateHead();
     void moveLeft();
     void moveRight();
     void StartSimulation();

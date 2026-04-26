@@ -15,6 +15,8 @@ TuringMachine::TuringMachine(const QString& Alphabet,
 {
     ui->setupUi(this);
 
+    setWindowTitle("turing_machine");
+
     for (QChar ch : m_alphabet) {
         if (!ch.isSpace()) {
             m_allowed.insert(ch);
@@ -121,38 +123,57 @@ void TuringMachine::CreateTape(const QString& input) {
     tw->setFixedHeight(42);
 
     m_index = padding;
+    m_viewOffset = qMax(0, m_index - VISIBLE_COLS / 2);
 
     UpdateView();
+    UpdateHead();
 
     m_initInput = input;
     m_initIndex = padding;
 }
 
 void TuringMachine::UpdateView() {
-    const int half = VISIBLE_COLS / 2;
     QString blank = "λ";
     QTableWidget* tw = ui->tape;
 
-    while (m_index - half < 0) {
+    while (m_index < 0) {
         m_tapeSymbols.prepend(blank);
         ++m_index;
+        ++m_viewOffset;
     }
-    while (m_index + half >= m_tapeSymbols.size()) {
+    while (m_index >= m_tapeSymbols.size()) {
         m_tapeSymbols.append(blank);
     }
 
     for (int col = 0; col < VISIBLE_COLS; ++col) {
-        int tapePos = m_index - half + col;
+        int tapePos = m_viewOffset + col;
         QTableWidgetItem* item = new QTableWidgetItem(m_tapeSymbols[tapePos]);
         item->setTextAlignment(Qt::AlignCenter);
 
-        if (col == half) {
+        if (tapePos == m_index) {
             item->setBackground(QBrush(QColor(0xE0, 0xF0, 0xFF)));
         } else {
             item->setBackground(QBrush(QColor(Qt::white)));
         }
         tw->setItem(0, col, item);
     }
+}
+
+void TuringMachine::UpdateHead() {
+    if (!ui->head || !ui->tape) return;
+
+    int col = m_index - m_viewOffset;
+    if (col < 0 || col >= VISIBLE_COLS) return;
+
+    QTableWidget* tw = ui->tape;
+    QRect cell = tw->visualRect(tw->model()->index(0, col));
+    QPoint top = tw->viewport()->mapTo(tw->parentWidget(), cell.topLeft());
+
+    int x = top.x() + cell.width() / 2 - ui->head->width() / 2 - 5;
+    int y = top.y() + ui->head->height() + 20;
+
+    ui->head->setGeometry(x, y, ui->head->width(), ui->head->height());
+    ui->head->raise();
 }
 
 void TuringMachine::on_add_state_clicked() {
@@ -291,6 +312,17 @@ void TuringMachine::executeStep() {
     }
 
     updateStateDisplay();
+
+    if (rule.halt) {
+        stopTimer();
+        QMessageBox::information(this, "Остановка", "Выполнена команда '!'");
+        m_simInit = false;
+        ui->pause->setEnabled(false);
+        ui->stop->setEnabled(true);
+        ui->play->setEnabled(true);
+        ui->step->setEnabled(true);
+        return;
+    }
 }
 
 void TuringMachine::StartSimulation() {
@@ -354,13 +386,35 @@ void TuringMachine::updateStateDisplay() {
 }
 
 void TuringMachine::moveLeft() {
+    if (m_index == 0) {
+        m_tapeSymbols.prepend("λ");
+        ++m_index;
+        ++m_viewOffset;
+    }
     --m_index;
+
+    int border = m_viewOffset + VISIBLE_COLS / 3;
+    if (m_index < border) {
+        m_viewOffset = qMax(0, m_viewOffset - VISIBLE_COLS / 3);
+    }
+
     UpdateView();
+    UpdateHead();
 }
 
 void TuringMachine::moveRight() {
+    if (m_index == m_tapeSymbols.size() - 1) {
+        m_tapeSymbols.append("λ");
+    }
     ++m_index;
+
+    int border = m_viewOffset + VISIBLE_COLS - 1 - VISIBLE_COLS / 3;
+    if (m_index > border) {
+        m_viewOffset = qMin(m_tapeSymbols.size() - VISIBLE_COLS, m_viewOffset + VISIBLE_COLS / 3);
+    }
+
     UpdateView();
+    UpdateHead();
 }
 
 QStringList TuringMachine::collectStateNames() const {
@@ -377,6 +431,7 @@ QStringList TuringMachine::collectStateNames() const {
 
 QString TuringMachine::validateAndLoadRules() {
     QTableWidget* tw = ui->table;
+    bool has_halt = false;
 
     QStringList stateNames = collectStateNames();
     m_transitions.clear();
@@ -393,11 +448,15 @@ QString TuringMachine::validateAndLoadRules() {
 
             bool ok = false;
 
+
             QString error;
             TuringRules rule = parseRules(text, stateNames, ok, error);
             if (!ok) {
                 errors << QString("Строка %1, столбец '%2': %3").arg(row + 1).arg(symbol).arg(error);
                 continue;
+            }
+            if (ok && rule.valid && rule.halt) {
+                has_halt= true;
             }
 
             QString key = curState + ":" + symbol;
@@ -407,6 +466,10 @@ QString TuringMachine::validateAndLoadRules() {
 
     if (!errors.isEmpty()) {
         return errors.join("\n");
+    }
+
+    if (!has_halt) {
+        return "В таблице должна быть команда '!'(остановка)";
     }
 
     return QString();
@@ -434,10 +497,23 @@ TuringRules TuringMachine::parseRules(const QString &text,
         return rule;
     }
 
+    bool halt = false;
+    for (const QString& part : parts) {
+        if (part == "!") {
+            halt = true;
+            break;
+        }
+    }
+
     QString newSymbol, direction, newState;
 
     for (const QString& part : parts) {
         if (part.isEmpty()) continue;
+
+        if (part == "!") {
+            halt = true;
+            continue;
+        }
 
         if (part == "L" || part == "R") {
             if (!direction.isEmpty()) {
@@ -470,13 +546,12 @@ TuringRules TuringMachine::parseRules(const QString &text,
     rule.newSymbol = newSymbol;
     rule.direction = direction;
     rule.newState = newState;
+    rule.halt = halt;
 
-    if (newSymbol.isEmpty() && direction.isEmpty() && newState.isEmpty()) {
-        ok = true;
-        return rule;
+    if (!newSymbol.isEmpty() || !direction.isEmpty() || !newState.isEmpty() || halt) {
+        rule.valid = true;
     }
 
-    rule.valid = true;
     return rule;
 }
 
@@ -577,16 +652,28 @@ void TuringMachine::applyAlphabetUpdate(const QString& mainAlph, const QString& 
 
         m_alphabet = mainAlph;
         m_addAlphabet = addAlph;
+    }
 
-        m_allSymbols.clear();
-        m_allSymbols << newMain;
-        m_allSymbols << "λ";
-        m_allSymbols << newAdd;
 
-        QStringList headers;
-        headers << "Состояние";
-        headers.append(m_allSymbols);
-        ui->table->setHorizontalHeaderLabels(headers);
+    m_allSymbols.clear();
+    m_allSymbols << newMain;
+    m_allSymbols << "λ";
+    m_allSymbols << newAdd;
+
+    QStringList headers;
+    headers << "Состояние";
+    headers.append(m_allSymbols);
+    ui->table->setHorizontalHeaderLabels(headers);
+
+    for (QChar ch : m_alphabet) {
+        if (!ch.isSpace()) {
+            m_allowed.insert(ch);
+        }
+    }
+    for (QChar ch : m_addAlphabet) {
+        if (!ch.isSpace()) {
+            m_allowed.insert(ch);
+        }
     }
 
     ui->tape->clear();
