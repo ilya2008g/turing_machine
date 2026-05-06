@@ -2,7 +2,10 @@
 #define TURINGMACHINE_H
 
 #include <QWidget>
-#include <QScrollBar>
+#include <QSet>
+#include <QChar>
+#include <QMap>
+#include <QPropertyAnimation>
 
 namespace Ui {
 class TuringMachine;
@@ -69,6 +72,8 @@ private:
     bool m_timerActive = false;
     bool m_simInit = false;
     int m_timerInterval = 500;
+    QPropertyAnimation* m_headAnimation = nullptr;
+
 
     void CreateTable();
     void CreateTape(const QString& input);
@@ -83,8 +88,6 @@ private:
     void UpdateSpeedDisplay();
     void restartTimer();
     void RebuildTable();
-    void addColumns(const QStringList& oldMain, const QStringList& oldAdd,
-                    const QStringList& newMain, const QStringList& newAdd);
 };
 
 #endif // TURINGMACHINE_H

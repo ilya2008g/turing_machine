@@ -16,6 +16,7 @@ TuringMachine::TuringMachine(const QString& Alphabet,
     ui->setupUi(this);
 
     setWindowTitle("turing_machine");
+    this->setFixedSize(700, 500);
 
     for (QChar ch : m_alphabet) {
         if (!ch.isSpace()) {
@@ -30,7 +31,9 @@ TuringMachine::TuringMachine(const QString& Alphabet,
 
     CreateTable();
 
+    m_timerInterval = 500;
     m_timer = new QTimer(this);
+    m_timer->setInterval(m_timerInterval);
     connect(m_timer, &QTimer::timeout, this, &TuringMachine::executeStep);
 
     ui->pause->setEnabled(false);
@@ -65,12 +68,10 @@ void TuringMachine::CreateTable() {
 
     QStringList symbols;
     symbols << main_symbols;
-    if (!symbols.contains(blank)) {
-        symbols.append(blank);
-    } else {
+    if (symbols.contains(blank)) {
         symbols.removeAll(blank);
-        symbols.append(blank);
     }
+    symbols.append(blank);
     symbols << add_symbols;
 
     symbols.removeDuplicates();
@@ -115,7 +116,7 @@ void TuringMachine::CreateTape(const QString& input) {
     tw->setColumnCount(VISIBLE_COLS);
 
     tw->horizontalHeader()->setVisible(false);
-    tw->verticalHeader()->setVisible(false);\
+    tw->verticalHeader()->setVisible(false);
     tw->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tw->setSelectionMode(QAbstractItemView::NoSelection);
     tw->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
@@ -126,7 +127,9 @@ void TuringMachine::CreateTape(const QString& input) {
     m_viewOffset = qMax(0, m_index - VISIBLE_COLS / 2);
 
     UpdateView();
-    UpdateHead();
+    QTimer::singleShot(0, this, [this] {
+        UpdateHead();
+    });
 
     m_initInput = input;
     m_initIndex = padding;
@@ -172,7 +175,17 @@ void TuringMachine::UpdateHead() {
     int x = top.x() + cell.width() / 2 - ui->head->width() / 2 - 5;
     int y = top.y() + ui->head->height() + 20;
 
-    ui->head->setGeometry(x, y, ui->head->width(), ui->head->height());
+    if (m_headAnimation && m_headAnimation->state() == QAbstractAnimation::Running) {
+        m_headAnimation->stop();
+    }
+
+    QPropertyAnimation* anim = new QPropertyAnimation(ui->head, "pos");
+    anim->setDuration(100);
+    anim->setStartValue(ui->head->pos());
+    anim->setEndValue(QPoint(x, y));
+    anim->setEasingCurve(QEasingCurve::InOutQuad);
+    anim->start(QAbstractAnimation::DeleteWhenStopped);
+
     ui->head->raise();
 }
 
@@ -215,15 +228,17 @@ void TuringMachine::on_play_clicked() {
         QString error = validateAndLoadRules();
         if (!error.isEmpty()) {
             QMessageBox::warning(this, "Обнаружены ошибки", error);
+            return;
         }
         if (m_tapeSymbols.isEmpty()) {
             QMessageBox::warning(this, "Пустая строка", "Сначала введите строку");
+            return;
         }
         StartSimulation();
     }
 
     if (!m_timerActive) {
-        m_timer->start(500);
+        m_timer->start(m_timerInterval);
         m_timerActive = true;
         ui->play->setEnabled(false);
         ui->pause->setEnabled(true);
@@ -238,9 +253,11 @@ void TuringMachine::on_step_clicked() {
         QString error = validateAndLoadRules();
         if (!error.isEmpty()) {
             QMessageBox::warning(this, "Обнаружены ошибки", error);
+            return;
         }
         if (m_tapeSymbols.isEmpty()) {
             QMessageBox::warning(this, "Пустая строка", "Сначала введите строку");
+            return;
         }
         StartSimulation();
     }
@@ -285,14 +302,6 @@ void TuringMachine::executeStep() {
 
     QString curSymbol = m_tapeSymbols[m_index];
     QString key = m_curState + ":" + curSymbol;
-
-    if (!m_transitions.contains(key)) {
-        stopTimer();
-        QMessageBox::information(this, "Остановка", QString("Нет правила для (%1, %2). Машина остановлена.")
-                                                        .arg(m_curState, curSymbol));
-        return;
-    }
-
     const TuringRules& rule = m_transitions[key];
 
     if (!rule.newSymbol.isEmpty()) {
@@ -327,7 +336,6 @@ void TuringMachine::executeStep() {
 
 void TuringMachine::StartSimulation() {
     QStringList states = collectStateNames();
-    if (states.isEmpty()) return;
     m_initState = states.first();
     m_curState = m_initState;
 
@@ -335,7 +343,9 @@ void TuringMachine::StartSimulation() {
     UpdateView();
     updateStateDisplay();
 
-    m_simInit = true;
+    m_simInit = true; 
+    m_timer->setInterval(m_timerInterval);
+    ui->table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     ui->play->setEnabled(true);
     ui->step->setEnabled(true);
     ui->pause->setEnabled(false);
@@ -361,6 +371,7 @@ void TuringMachine::resetSimulation() {
     updateStateDisplay();
     m_simInit = false;
 
+    ui->table->setEditTriggers(QAbstractItemView::AllEditTriggers);
     ui->pause->setEnabled(false);
     ui->stop->setEnabled(false);
 }
@@ -452,6 +463,7 @@ QString TuringMachine::validateAndLoadRules() {
             QString error;
             TuringRules rule = parseRules(text, stateNames, ok, error);
             if (!ok) {
+                resetSimulation();
                 errors << QString("Строка %1, столбец '%2': %3").arg(row + 1).arg(symbol).arg(error);
                 continue;
             }
@@ -465,10 +477,12 @@ QString TuringMachine::validateAndLoadRules() {
     }
 
     if (!errors.isEmpty()) {
+        resetSimulation();
         return errors.join("\n");
     }
 
     if (!has_halt) {
+        resetSimulation();
         return "В таблице должна быть команда '!'(остановка)";
     }
 
@@ -476,79 +490,76 @@ QString TuringMachine::validateAndLoadRules() {
 }
 
 TuringRules TuringMachine::parseRules(const QString &text,
-                       const QStringList& stateNames, bool &ok, QString &error) const {
+                                      const QStringList& stateNames, bool &ok, QString &error) const {
     ok = true;
     error.clear();
     TuringRules rule;
     rule.valid = false;
 
-    QStringList InitParts = text.split(',', Qt::KeepEmptyParts);
     QStringList parts;
-    for (const QString& p : InitParts) {
+    for (const QString& p : text.split(',', Qt::KeepEmptyParts)) {
         QString trim = p.trimmed();
-        if (!trim.isEmpty()) {
+        if (!trim.isEmpty())
             parts.append(trim);
-        }
     }
 
-    if (parts.size() > 3) {
-        ok = false;
-        error = "Слишком много инструкций (нужно 3)";
-        return rule;
-    }
-
+    bool gotSymbol = false;
+    bool gotDirection = false;
+    bool gotState = false;
     bool halt = false;
-    for (const QString& part : parts) {
-        if (part == "!") {
-            halt = true;
-            break;
-        }
-    }
-
-    QString newSymbol, direction, newState;
 
     for (const QString& part : parts) {
-        if (part.isEmpty()) continue;
-
         if (part == "!") {
             halt = true;
             continue;
         }
 
-        if (part == "L" || part == "R") {
-            if (!direction.isEmpty()) {
+        if (m_allSymbols.contains(part)) {
+            if (gotSymbol) {
                 ok = false;
-                error = "Указано два направления";
+                error = "Два символа алфавита (ожидался порядок: символ -> направление -> состояние)";
                 return rule;
             }
-            direction = part;
-        } else if (stateNames.contains(part)) {
-            if (!newState.isEmpty()) {
+            if (gotDirection || gotState) {
                 ok = false;
-                error = "Указано два состояния";
+                error = "Символ не может следовать после направления или состояния";
                 return rule;
             }
-            newState = part;
-        } else if (m_allSymbols.contains(part)) {
-            if (!newSymbol.isEmpty()) {
+            rule.newSymbol = part;
+            gotSymbol = true;
+        }
+        else if (part == "L" || part == "R") {
+            if (gotDirection) {
                 ok = false;
-                error = "Указано два элемента";
+                error = "Два направления";
                 return rule;
             }
-            newSymbol = part;
-        } else {
+            if (gotState) {
+                ok = false;
+                error = "Направление не может следовать после состояния";
+                return rule;
+            }
+            rule.direction = part;
+            gotDirection = true;
+        }
+        else if (stateNames.contains(part)) {
+            if (gotState) {
+                ok = false;
+                error = "Два состояния";
+                return rule;
+            }
+            gotState = true;
+            rule.newState = part;
+        }
+        else {
             ok = false;
             error = QString("Неизвестный компонент '%1'").arg(part);
             return rule;
         }
     }
 
-    rule.newSymbol = newSymbol;
-    rule.direction = direction;
-    rule.newState = newState;
     rule.halt = halt;
-
-    if (!newSymbol.isEmpty() || !direction.isEmpty() || !newState.isEmpty() || halt) {
+    if (!rule.newSymbol.isEmpty() || !rule.direction.isEmpty() || !rule.newState.isEmpty() || halt) {
         rule.valid = true;
     }
 
@@ -578,133 +589,77 @@ void TuringMachine::on_change_alph_clicked() {
 void TuringMachine::applyAlphabetUpdate(const QString& mainAlph, const QString& addAlph) {
     QStringList newMain, newAdd;
     for (QChar ch : mainAlph) {
-        if (!ch.isSpace()) {
-            newMain << ch;
-        }
+        if (!ch.isSpace()) newMain << ch;
     }
     for (QChar ch : addAlph) {
-        if (!ch.isSpace()) {
-            newAdd << ch;
-        }
+        if (!ch.isSpace()) newAdd << ch;
     }
 
-    QStringList oldMain = m_alphabet.split("", Qt::SkipEmptyParts);
-    QStringList oldAdd = m_addAlphabet.split("", Qt::SkipEmptyParts);
-
-    bool rebuild = false;
-    for (const QString& s : oldMain) {
-        if (!newMain.contains(s)) {
-            rebuild = true;
-            break;
-        }
+    QSet<QString> setMain(newMain.begin(), newMain.end());
+    if (setMain.size() != newMain.size()) {
+        QMessageBox::warning(this, "Ошибка", "Основной алфавит содержит повторяющиеся символы.");
+        return;
     }
-    if (!rebuild) {
-        for (const QString& s : oldAdd) {
-            if (!newAdd.contains(s)) {
-                rebuild = true;
-                break;
+    QSet<QString> setAdd(newAdd.begin(), newAdd.end());
+    if (setAdd.size() != newAdd.size()) {
+        QMessageBox::warning(this, "Ошибка", "Дополнительный алфавит содержит повторяющиеся символы.");
+        return;
+    }
+    if (setMain.intersects(setAdd)) {
+        QMessageBox::warning(this, "Ошибка", "Основной и дополнительный алфавиты не должны пересекаться.");
+        return;
+    }
+
+    QMap<QString, QString> oldRules;
+    QTableWidget* tw = ui->table;
+    QStringList oldStates = collectStateNames();
+    for (int row = 0; row < tw->rowCount(); ++row) {
+        QString state = tw->item(row, 0)->text().trimmed();
+        for (int col = 1; col < tw->columnCount(); ++col) {
+            QString symbol = m_allSymbols.value(col - 1);
+            QTableWidgetItem* item = tw->item(row, col);
+            if (item && !item->text().isEmpty()) {
+                oldRules[state + ":" + symbol] = item->text();
             }
         }
     }
 
-    if (rebuild) {
-        QMap<QString, QString> oldRules;
-        QTableWidget* tw = ui->table;
-        QStringList oldStates = collectStateNames();
-        for (int row = 0; row < tw->rowCount(); ++row) {
-            QString state = tw->item(row, 0)->text().trimmed();
-            for (int col = 1; col < tw->columnCount(); ++col) {
-                QString symbol = m_allSymbols[col - 1];
-                QTableWidgetItem* item = tw->item(row, col);
-                if (item && !item->text().isEmpty()) {
-                    oldRules[state + ":" + symbol] = item->text();
-                }
-            }
+    m_alphabet = mainAlph;
+    m_addAlphabet = addAlph;
+
+    CreateTable();
+
+    tw = ui->table;
+    tw->removeRow(0);
+    for (const QString& stateName : oldStates) {
+        int newRow = tw->rowCount();
+        tw->insertRow(newRow);
+        tw->setItem(newRow, 0, new QTableWidgetItem(stateName));
+    }
+    m_nextState = oldStates.size() - 1;
+
+    for (auto it = oldRules.begin(); it != oldRules.end(); ++it) {
+        QStringList keyParts = it.key().split(':');
+        if (keyParts.size() != 2) continue;
+        QString state = keyParts[0];
+        QString symbol = keyParts[1];
+        int row = oldStates.indexOf(state);
+        int col = m_allSymbols.indexOf(symbol);
+        if (row >= 0 && col >= 0) {
+            tw->setItem(row, col + 1, new QTableWidgetItem(it.value()));
         }
-
-        m_alphabet = mainAlph;
-        m_addAlphabet = addAlph;
-
-        CreateTable();
-
-        QTableWidget* newTw = ui->table;
-        newTw->removeRow(0);
-        for (const QString& stateName : oldStates) {
-            int newRow = newTw->rowCount();
-            newTw->insertRow(newRow);
-            newTw->setItem(newRow, 0, new QTableWidgetItem(stateName));
-        }
-        m_nextState = oldStates.size() - 1;
-
-        for (auto it = oldRules.begin(); it != oldRules.end(); ++it) {
-            QStringList keyParts = it.key().split(':');
-            if (keyParts.size() != 2) continue;
-            QString state = keyParts[0];
-            QString symbol = keyParts[1];
-            int row = oldStates.indexOf(state);
-            int col = m_allSymbols.indexOf(symbol);
-            if (row >= 0 && col >= 0) {
-                newTw->setItem(row, col + 1, new QTableWidgetItem(it.value()));
-            }
-        }
-    } else {
-        addColumns(oldMain, oldAdd, newMain, newAdd);
-
-        m_alphabet = mainAlph;
-        m_addAlphabet = addAlph;
     }
 
-
-    m_allSymbols.clear();
-    m_allSymbols << newMain;
-    m_allSymbols << "λ";
-    m_allSymbols << newAdd;
-
-    QStringList headers;
-    headers << "Состояние";
-    headers.append(m_allSymbols);
-    ui->table->setHorizontalHeaderLabels(headers);
-
+    m_allowed.clear();
     for (QChar ch : m_alphabet) {
-        if (!ch.isSpace()) {
-            m_allowed.insert(ch);
-        }
+        if (!ch.isSpace()) m_allowed.insert(ch);
     }
     for (QChar ch : m_addAlphabet) {
-        if (!ch.isSpace()) {
-            m_allowed.insert(ch);
-        }
+        if (!ch.isSpace()) m_allowed.insert(ch);
     }
 
     ui->tape->clear();
     m_tapeSymbols.clear();
     if (m_timerActive) stopTimer();
     m_simInit = false;
-}
-
-void TuringMachine::addColumns(const QStringList& oldMain, const QStringList& oldAdd,
-                               const QStringList& newMain, const QStringList& newAdd) {
-    QTableWidget* tw = ui->table;
-    int blank_index = oldMain.size() + 1;
-
-    for (const QString& sym : newMain) {
-        if (!oldMain.contains(sym)) {
-            tw->insertColumn(blank_index);
-            for (int row = 0; row < tw->rowCount(); ++row) {
-                tw->setItem(row, blank_index, new QTableWidgetItem(""));
-            }
-            ++blank_index;
-        }
-    }
-
-    int add_index = blank_index + oldAdd.size();
-    for (const QString& sym : newAdd) {
-        if (!oldAdd.contains(sym)) {
-            tw->insertColumn(add_index);
-            for (int row = 0; row < tw->rowCount(); ++row) {
-                tw->setItem(row, add_index, new QTableWidgetItem(""));
-            }
-            ++add_index;
-        }
-    }
 }
