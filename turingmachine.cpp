@@ -127,9 +127,8 @@ void TuringMachine::CreateTape(const QString& input) {
     m_viewOffset = qMax(0, m_index - VISIBLE_COLS / 2);
 
     UpdateView();
-    QTimer::singleShot(0, this, [this] {
-        UpdateHead();
-    });
+    m_prevViewOffset = m_viewOffset;
+    UpdateHead();
 
     m_initInput = input;
     m_initIndex = padding;
@@ -175,6 +174,16 @@ void TuringMachine::UpdateHead() {
     int x = top.x() + cell.width() / 2 - ui->head->width() / 2 - 5;
     int y = top.y() + ui->head->height() + 20;
 
+    if (m_viewOffset != m_prevViewOffset) {
+        if (m_headAnimation && m_headAnimation->state() == QAbstractAnimation::Running) {
+            m_headAnimation->stop();
+        }
+        ui->head->move(x, y);
+        ui->head->raise();
+        m_prevViewOffset = m_viewOffset;
+        return;
+    }
+
     if (m_headAnimation && m_headAnimation->state() == QAbstractAnimation::Running) {
         m_headAnimation->stop();
     }
@@ -185,8 +194,10 @@ void TuringMachine::UpdateHead() {
     anim->setEndValue(QPoint(x, y));
     anim->setEasingCurve(QEasingCurve::InOutQuad);
     anim->start(QAbstractAnimation::DeleteWhenStopped);
+    m_headAnimation = anim;
 
     ui->head->raise();
+    m_prevViewOffset = m_viewOffset;
 }
 
 void TuringMachine::on_add_state_clicked() {

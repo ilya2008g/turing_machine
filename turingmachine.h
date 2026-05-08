@@ -6,6 +6,7 @@
 #include <QChar>
 #include <QMap>
 #include <QPropertyAnimation>
+#include <QPointer>
 
 namespace Ui {
 class TuringMachine;
@@ -72,7 +73,8 @@ private:
     bool m_timerActive = false;
     bool m_simInit = false;
     int m_timerInterval = 500;
-    QPropertyAnimation* m_headAnimation = nullptr;
+    QPointer<QPropertyAnimation> m_headAnimation;
+    int m_prevViewOffset = 0;
 
 
     void CreateTable();
